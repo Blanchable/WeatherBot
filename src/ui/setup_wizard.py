@@ -1,4 +1,8 @@
-"""Interactive setup wizard for the Kalshi Weather Bot."""
+"""Interactive setup wizard for the Kalshi Weather Bot.
+
+Can be run directly (python setup_wizard.py) or via the batch/shell launcher.
+Bootstraps its own dependencies before importing anything heavy.
+"""
 
 from __future__ import annotations
 
@@ -7,16 +11,32 @@ import subprocess
 import sys
 from pathlib import Path
 
-from rich.console import Console
-from rich.panel import Panel
-from rich.prompt import Prompt, Confirm, IntPrompt, FloatPrompt
-from rich.text import Text
-from rich.table import Table
-
-console = Console()
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ENV_FILE = PROJECT_ROOT / ".env"
+
+
+def _bootstrap() -> None:
+    """Install the project (and all deps) if rich is not yet available."""
+    try:
+        import rich  # noqa: F401
+    except ImportError:
+        print("\n  First-time setup: installing dependencies...")
+        print(f"  Project root: {PROJECT_ROOT}\n")
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "-e", str(PROJECT_ROOT)],
+        )
+        print("\n  Dependencies installed. Continuing setup...\n")
+
+
+_bootstrap()
+
+from rich.console import Console  # noqa: E402
+from rich.panel import Panel  # noqa: E402
+from rich.prompt import Prompt, Confirm, IntPrompt, FloatPrompt  # noqa: E402
+from rich.text import Text  # noqa: E402
+from rich.table import Table  # noqa: E402
+
+console = Console()
 
 
 def _banner() -> None:

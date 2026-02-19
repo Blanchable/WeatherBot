@@ -14,16 +14,21 @@ A disciplined, maker-first trading bot for Kalshi weather markets (temperature +
 
 ### 1. Setup Wizard (Recommended)
 
+**Windows** — Double-click `setup.bat`
+
+**macOS / Linux** — Double-click `setup.sh` (or run `bash setup.sh`)
+
+The launcher will find Python, auto-install all dependencies on first run, then walk you through:
+- Kalshi API credentials
+- Trading parameters and risk limits
+- Writing your `.env` file
+- Optionally launching the GUI
+
+You can also run the wizard directly:
+
 ```bash
 python -m src.ui.setup_wizard
 ```
-
-The wizard will:
-- Check prerequisites and install dependencies
-- Prompt for your Kalshi API credentials
-- Configure trading parameters and risk limits
-- Write your `.env` file
-- Optionally launch the GUI
 
 ### 2. Manual Setup
 
