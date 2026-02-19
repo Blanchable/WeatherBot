@@ -55,7 +55,7 @@ class StrategyConfig:
     # Volatility estimation
     volatility_lookback: int = 50
     volatility_floor: float = 0.05
-    volatility_cap: float = 0.50
+    volatility_cap: float = 0.25
 
     # Edge thresholds - don't quote if spread would be negative edge
     min_edge_cents: int = 1
