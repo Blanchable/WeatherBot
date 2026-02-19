@@ -52,7 +52,6 @@ class OrderManager:
             order_type="limit",
             count=size,
             yes_price=price,
-            client_order_id=client_id,
         )
         if result:
             order = ManagedOrder(
@@ -83,7 +82,6 @@ class OrderManager:
             order_type="limit",
             count=size,
             no_price=no_price,
-            client_order_id=client_id,
         )
         if result:
             order = ManagedOrder(

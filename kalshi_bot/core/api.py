@@ -121,7 +121,12 @@ class KalshiApiClient:
                     method, path, resp.text[:200],
                 )
                 return None
-            resp.raise_for_status()
+            if not resp.ok:
+                logger.error(
+                    "API %s %s returned %d: %s",
+                    method, path, resp.status_code, resp.text[:300],
+                )
+                return None
             if resp.content:
                 return resp.json()
             return {}

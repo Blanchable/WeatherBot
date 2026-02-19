@@ -271,17 +271,20 @@ class BotEngine:
         self.order_manager.cancel_all(ticker)
         time.sleep(0.05)
 
+        bid_order = None
+        ask_order = None
         if bid_ok:
-            self.order_manager.place_bid(ticker, quote.bid_price, quote.bid_size)
+            bid_order = self.order_manager.place_bid(ticker, quote.bid_price, quote.bid_size)
         if ask_ok:
-            self.order_manager.place_ask(ticker, quote.ask_price, quote.ask_size)
+            ask_order = self.order_manager.place_ask(ticker, quote.ask_price, quote.ask_size)
 
-        self._current_quotes[ticker] = quote
-        logger.info(
-            "Quoted %s: %dc/%dc (spread=%d, fv=%.1f, skew=%.2f)",
-            ticker, quote.bid_price, quote.ask_price,
-            quote.spread, quote.fair_value, quote.inventory_skew,
-        )
+        if bid_order or ask_order:
+            self._current_quotes[ticker] = quote
+            logger.info(
+                "Quoted %s: %dc/%dc (spread=%d, fv=%.1f, skew=%.2f)",
+                ticker, quote.bid_price, quote.ask_price,
+                quote.spread, quote.fair_value, quote.inventory_skew,
+            )
 
     def _on_kill_switch(self, reason: str):
         self.emergency_stop()
