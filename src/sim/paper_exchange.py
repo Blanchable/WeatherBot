@@ -38,6 +38,7 @@ class PaperExchange:
     books: dict[str, BookSnapshot] = field(default_factory=dict)
     open_orders: dict[str, PaperOrder] = field(default_factory=dict)
     fills: list[FillEvent] = field(default_factory=list)
+    rng: random.Random = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.rng = random.Random(self.rng_seed)
