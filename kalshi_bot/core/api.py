@@ -198,7 +198,7 @@ class KalshiApiClient:
         return self.get(f"/series/{series_ticker}")
 
     def get_trades(self, ticker: str, limit: int = 50) -> list[dict]:
-        data = self.get(f"/markets/{ticker}/trades", params={"limit": limit})
+        data = self.get("/markets/trades", params={"ticker": ticker, "limit": limit})
         if data:
             return data.get("trades", [])
         return []
