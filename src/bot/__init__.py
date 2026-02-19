@@ -1,0 +1,2 @@
+"""Bot application bootstrap package."""
+

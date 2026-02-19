@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kalshi-weather-bot"
+version = "0.1.0"
+description = "Conservative maker-first Kalshi weather bot with paper/live modes."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Cursor Agent" }]
+dependencies = [
+  "httpx>=0.28.1",
+  "numpy>=2.2.3",
+  "pandas>=2.2.3",
+  "pydantic>=2.10.6",
+  "python-dotenv>=1.0.1",
+  "rich>=13.9.4",
+  "scipy>=1.15.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3.4"]
+
+[project.scripts]
+weather-bot = "bot.main:main"
+weather-bot-gui = "ui.gui:main"
+
+[tool.hatch.build.targets.wheel]
+packages = [
+  "src/bot",
+  "src/kalshi",
+  "src/weather",
+  "src/pricing",
+  "src/strategy",
+  "src/execution",
+  "src/risk",
+  "src/storage",
+  "src/sim",
+  "src/ui",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
