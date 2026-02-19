@@ -1,16 +1,14 @@
-"""Kalshi REST API client with RSA per-request signing."""
+"""Kalshi REST API client with RSA-PSS per-request signing."""
 
 import base64
 import time
 import logging
 import threading
-from datetime import datetime, timezone
 from typing import Any, Optional
-from urllib.parse import urlparse
 
 import requests
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives.asymmetric import padding
 
 from kalshi_bot.core.config import ApiConfig, Credentials
 
@@ -38,11 +36,12 @@ class RateLimiter:
 
 
 class KalshiApiClient:
-    """Client for Kalshi Trading API v2 with RSA key authentication.
+    """Client for Kalshi Trading API v2 with RSA-PSS key authentication.
 
-    Kalshi requires each request to be signed with an RSA private key.
-    The signature covers: timestamp_ms + method + path
-    Header format: KALSHI-RSA-SHA256 <key_id>:<signature>:<timestamp>
+    Each request is signed per Kalshi's scheme:
+      - Message = timestamp_ms + METHOD + path (without query params)
+      - Signature = RSA-PSS (MGF1-SHA256, salt=digest_length) over message
+      - Three headers: KALSHI-ACCESS-KEY, KALSHI-ACCESS-SIGNATURE, KALSHI-ACCESS-TIMESTAMP
     """
 
     def __init__(self, config: ApiConfig, credentials: Credentials):
@@ -52,42 +51,53 @@ class KalshiApiClient:
         self.session.headers["Content-Type"] = "application/json"
         self._private_key = None
         self.rate_limiter = RateLimiter(max_calls=8, period=1.0)
-        self._lock = threading.Lock()
 
     def login(self) -> bool:
-        """Load the private key and verify connectivity."""
+        """Load the private key and verify auth by hitting an authenticated endpoint."""
         self._private_key = self.credentials.load_private_key()
         if self._private_key is None:
             logger.error("Failed to load RSA private key from: %s", self.credentials.private_key_path)
             return False
 
         try:
-            status = self.get_exchange_status()
-            if status is not None:
+            # Use portfolio/balance (requires auth) to verify the key is valid
+            balance = self.get_balance()
+            if balance is not None:
                 logger.info(
-                    "Connected to Kalshi (key=%s..., demo=%s)",
-                    self.credentials.api_key_id[:8],
+                    "Connected to Kalshi (key=%s..., demo=%s, balance=$%.2f)",
+                    self.credentials.api_key_id[:8] if len(self.credentials.api_key_id) >= 8 else self.credentials.api_key_id,
                     self.config.use_demo,
+                    balance / 100,
                 )
                 return True
-            logger.error("Connected but exchange status returned None")
+            logger.error("Auth failed - check your API Key ID and private key .pem file")
             return False
         except Exception as e:
             logger.error("Connection test failed: %s", e)
             return False
 
     def _sign_request(self, method: str, path: str) -> dict[str, str]:
-        """Generate auth headers by RSA-signing the request."""
+        """Generate the three Kalshi auth headers by RSA-PSS signing the request."""
         timestamp_ms = str(int(time.time() * 1000))
-        message = timestamp_ms + method.upper() + path
+
+        # Strip query params from path for signing (Kalshi requirement)
+        sign_path = path.split("?")[0]
+        message = (timestamp_ms + method.upper() + sign_path).encode("utf-8")
+
         signature = self._private_key.sign(
-            message.encode("utf-8"),
-            padding.PKCS1v15(),
+            message,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.DIGEST_LENGTH,
+            ),
             hashes.SHA256(),
         )
         sig_b64 = base64.b64encode(signature).decode("utf-8")
+
         return {
-            "Authorization": f"KALSHI-RSA-SHA256 {self.credentials.api_key_id}:{sig_b64}:{timestamp_ms}",
+            "KALSHI-ACCESS-KEY": self.credentials.api_key_id,
+            "KALSHI-ACCESS-SIGNATURE": sig_b64,
+            "KALSHI-ACCESS-TIMESTAMP": timestamp_ms,
         }
 
     def _request(self, method: str, path: str, **kwargs) -> Optional[dict]:
@@ -96,8 +106,10 @@ class KalshiApiClient:
             return None
 
         self.rate_limiter.acquire()
-        url = f"{self.config.base_url}{path}"
-        auth_headers = self._sign_request(method, path)
+
+        full_path = self.config.api_prefix + path
+        url = self.config.host + full_path
+        auth_headers = self._sign_request(method, full_path)
 
         try:
             resp = self.session.request(
@@ -105,8 +117,8 @@ class KalshiApiClient:
             )
             if resp.status_code == 401:
                 logger.error(
-                    "Auth failed (401) for %s %s - check API key and private key",
-                    method, path,
+                    "Auth failed (401) for %s %s - check API key and private key. Body: %s",
+                    method, path, resp.text[:200],
                 )
                 return None
             resp.raise_for_status()

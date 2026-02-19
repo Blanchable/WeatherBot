@@ -13,18 +13,23 @@ CREDENTIALS_FILE = CONFIG_DIR / "credentials.json"
 
 @dataclass
 class ApiConfig:
-    base_url: str = "https://demo-api.kalshi.co/trade-api/v2"
-    ws_url: str = "wss://demo-api.kalshi.co/trade-api/ws/v2"
+    host: str = "https://demo-api.kalshi.co"
+    ws_host: str = "wss://demo-api.kalshi.co"
+    api_prefix: str = "/trade-api/v2"
     use_demo: bool = True
+
+    @property
+    def base_url(self) -> str:
+        return self.host + self.api_prefix
 
     def set_environment(self, demo: bool):
         self.use_demo = demo
         if demo:
-            self.base_url = "https://demo-api.kalshi.co/trade-api/v2"
-            self.ws_url = "wss://demo-api.kalshi.co/trade-api/ws/v2"
+            self.host = "https://demo-api.kalshi.co"
+            self.ws_host = "wss://demo-api.kalshi.co"
         else:
-            self.base_url = "https://trading-api.kalshi.com/trade-api/v2"
-            self.ws_url = "wss://trading-api.kalshi.com/trade-api/ws/v2"
+            self.host = "https://api.elections.kalshi.com"
+            self.ws_host = "wss://api.elections.kalshi.com"
 
 
 @dataclass
@@ -100,22 +105,20 @@ class BotConfig:
             with open(CONFIG_FILE) as f:
                 data = json.load(f)
             config = cls()
+            # Skip legacy fields that are now properties
+            _skip_api = {"base_url", "ws_url"}
             if "api" in data:
                 for k, v in data["api"].items():
-                    if hasattr(config.api, k):
+                    if k not in _skip_api and hasattr(config.api, k):
                         setattr(config.api, k, v)
-            if "strategy" in data:
-                for k, v in data["strategy"].items():
-                    if hasattr(config.strategy, k):
-                        setattr(config.strategy, k, v)
-            if "risk" in data:
-                for k, v in data["risk"].items():
-                    if hasattr(config.risk, k):
-                        setattr(config.risk, k, v)
-            if "market" in data:
-                for k, v in data["market"].items():
-                    if hasattr(config.market, k):
-                        setattr(config.market, k, v)
+            for section in ("strategy", "risk", "market"):
+                if section in data:
+                    sub = getattr(config, section)
+                    for k, v in data[section].items():
+                        if hasattr(sub, k):
+                            setattr(sub, k, v)
+            # Ensure host/ws_host match use_demo
+            config.api.set_environment(config.api.use_demo)
             return config
         except (json.JSONDecodeError, KeyError):
             return cls()
