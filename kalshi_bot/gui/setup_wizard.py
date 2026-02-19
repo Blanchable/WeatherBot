@@ -252,10 +252,12 @@ class SetupWizard:
 
         ttk.Label(self.content_frame, text=(
             "\nRecommended series for market making:\n"
-            "  KXHIGHNY - NYC Daily High Temperature\n"
-            "  KXLOWNY  - NYC Daily Low Temperature\n"
-            "  KXHIGHCHI - Chicago Daily High Temperature\n"
-            "  KXRAIN   - Daily Rainfall"
+            "  KXBTC      - Bitcoin Price (hourly/daily, high volume)\n"
+            "  KXHIGHNY   - NYC Daily High Temperature\n"
+            "  KXINX      - S&P 500 Daily Close\n"
+            "  KXNASDAQ100- Nasdaq-100 Daily Close\n"
+            "  KXFED      - Fed Funds Rate\n"
+            "  KXCPI      - CPI Inflation Data"
         ), style="Sub.TLabel", justify=tk.LEFT).pack(anchor=tk.W, pady=10)
 
     # ── Step 4: Done ──────────────────────────────────────────

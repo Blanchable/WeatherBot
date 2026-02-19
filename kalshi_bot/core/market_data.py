@@ -85,6 +85,15 @@ class MarketInfo:
     expiration_time: Optional[datetime] = None
 
     @property
+    def hours_to_close(self) -> Optional[float]:
+        """Hours until trading closes (close_time), falling back to expiration_time."""
+        target = self.close_time or self.expiration_time
+        if target:
+            delta = target - datetime.now(timezone.utc)
+            return max(0, delta.total_seconds() / 3600)
+        return None
+
+    @property
     def hours_to_expiry(self) -> Optional[float]:
         if self.expiration_time:
             delta = self.expiration_time - datetime.now(timezone.utc)

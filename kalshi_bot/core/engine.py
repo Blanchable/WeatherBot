@@ -188,7 +188,7 @@ class BotEngine:
                     event_ticker = event.get("event_ticker", "")
                     markets = event.get("markets", [])
                     if not markets:
-                        markets = self.api.get_markets(event_ticker=event_ticker, status="open")
+                        markets = self.api.get_markets(event_ticker=event_ticker)
 
                     for market in markets:
                         ticker = market.get("ticker", "")
@@ -200,13 +200,15 @@ class BotEngine:
                         if not info:
                             continue
 
-                        # Filter criteria
                         if info.status not in ("open", "active", ""):
                             continue
-                        if info.hours_to_expiry is not None:
-                            if info.hours_to_expiry > mc.max_hours_to_expiry:
+
+                        # Filter by close time (when trading ends), not expiration (settlement)
+                        hours_left = info.hours_to_close
+                        if hours_left is not None:
+                            if hours_left > mc.max_hours_to_expiry:
                                 continue
-                            if info.hours_to_expiry < mc.min_hours_to_expiry:
+                            if hours_left < mc.min_hours_to_expiry:
                                 continue
 
                         new_markets.append(ticker)
@@ -215,8 +217,8 @@ class BotEngine:
                 logger.error("Error discovering markets for %s: %s", series_ticker, e)
 
         if new_markets:
-            self._active_markets = new_markets[:10]  # cap at 10 markets
-            logger.info("Active markets: %s", self._active_markets)
+            self._active_markets = new_markets[:10]
+            logger.info("Active markets (%d): %s", len(self._active_markets), self._active_markets)
         elif not self._active_markets:
             logger.warning("No suitable markets found for series: %s", mc.target_series)
 
@@ -323,7 +325,7 @@ class BotEngine:
                 "market_bid": ob.best_bid if ob else None,
                 "market_ask": ob.best_ask if ob else None,
                 "title": info.title if info else ticker,
-                "hours_to_expiry": round(info.hours_to_expiry, 1) if info and info.hours_to_expiry else None,
+                "hours_to_expiry": round(info.hours_to_close, 1) if info and info.hours_to_close else None,
                 "volume": info.volume if info else 0,
             }
 

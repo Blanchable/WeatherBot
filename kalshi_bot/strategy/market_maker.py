@@ -82,10 +82,10 @@ class MarketMakingStrategy:
         sigma = self.market_data.estimate_volatility(ticker, self.config.volatility_lookback)
         sigma = max(self.config.volatility_floor, min(self.config.volatility_cap, sigma))
 
-        # 3. Time to expiry factor
+        # 3. Time to close factor (use close_time, not settlement expiry)
         T = 1.0  # normalized time remaining
-        if info and info.hours_to_expiry is not None:
-            hours = info.hours_to_expiry
+        if info and info.hours_to_close is not None:
+            hours = info.hours_to_close
             if hours < self.config.time_decay_start_hours:
                 T = max(0.01, hours / self.config.time_decay_start_hours)
 

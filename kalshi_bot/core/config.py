@@ -76,13 +76,13 @@ class RiskConfig:
 @dataclass
 class MarketConfig:
     # Which series/event tickers to trade
-    target_series: list = field(default_factory=lambda: ["KXHIGHNY"])
+    target_series: list = field(default_factory=lambda: ["KXBTC", "KXHIGHNY", "KXINX"])
     auto_select_markets: bool = True
     min_market_volume: int = 50
     min_market_open_interest: int = 20
-    # Only trade markets expiring within this window (hours)
-    max_hours_to_expiry: float = 72.0
-    min_hours_to_expiry: float = 0.5
+    # Only trade markets closing within this window (hours from now)
+    max_hours_to_expiry: float = 36.0
+    min_hours_to_expiry: float = 0.25
 
 
 @dataclass
