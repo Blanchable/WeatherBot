@@ -31,42 +31,42 @@ The bot targets **weather markets** (e.g., NYC daily high temperature) which are
 
 ## Quick Start
 
-### 1. Install
+Just double-click (or run) one file. It handles everything automatically -- finds Python, installs dependencies, and launches the bot with the setup wizard on first run.
+
+### Windows
+
+Double-click **`start.bat`**
+
+### Linux / macOS
 
 ```bash
-chmod +x setup.sh
-./setup.sh
+./start.sh
 ```
 
-The setup script will:
-- Verify Python 3.10+ is installed
-- Check/install Tkinter for the GUI
-- Create a virtual environment
-- Install all dependencies
-- Create launcher scripts
+(If needed: `chmod +x start.sh` first)
 
-### 2. Run
+### What happens on first launch
+
+1. Verifies Python 3.10+ is installed
+2. Installs Tkinter if missing (Linux only)
+3. Creates a virtual environment and installs dependencies
+4. Opens the **Setup Wizard** to walk you through credentials, environment, and strategy
+5. Launches the **Control Panel**
+
+On subsequent launches, steps 1-4 are skipped (already done) and the control panel opens directly.
+
+### Additional options
 
 ```bash
-# Launch with GUI (opens setup wizard on first run)
-./run.sh
+# Re-run the setup wizard
+./start.sh --setup
 
-# Re-run setup wizard
-./run.sh --setup
-
-# Headless mode (no GUI)
-./run_headless.sh
+# Headless mode (no GUI, for servers)
+./start.sh --headless
 
 # Verbose logging
-./run.sh --verbose
+./start.sh --verbose
 ```
-
-### 3. Configure
-
-On first launch, the setup wizard guides you through:
-1. **Credentials** - Kalshi email and password
-2. **Environment** - Demo (paper trading) or Live
-3. **Strategy** - Order size, spreads, position limits, target markets
 
 All settings are saved to `~/.kalshi_bot/` and can be changed later from the Settings tab.
 
