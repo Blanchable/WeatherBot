@@ -210,12 +210,12 @@ def _write_env(all_config: dict) -> None:
 
     merged = {**defaults, **all_config}
 
-    lines = ["# Kalshi Weather Bot — Auto-generated Configuration", ""]
+    lines = ["# Kalshi Weather Bot - Auto-generated Configuration", ""]
     for key, val in merged.items():
         lines.append(f"{key}={val}")
     lines.append("")
 
-    ENV_FILE.write_text("\n".join(lines))
+    ENV_FILE.write_text("\n".join(lines), encoding="utf-8")
     console.print(f"\n  [green]Configuration written to {ENV_FILE}[/green]")
 
 
