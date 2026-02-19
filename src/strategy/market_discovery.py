@@ -55,8 +55,12 @@ _TEMP_LTE_PAT = re.compile(
     r"(?:below|under|<=?|at\s+most|or\s+(?:less|lower|below))\s*(\d+)\s*°?\s*F?",
     re.IGNORECASE,
 )
+_MONTH_NAMES = (
+    "january|february|march|april|may|june|july|august|september|october|november|december"
+    "|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec"
+)
 _DATE_PAT = re.compile(
-    r"(\w+\s+\d{1,2}(?:,?\s+\d{4})?|\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}(?:/\d{2,4})?)",
+    rf"(\d{{4}}-\d{{2}}-\d{{2}}|\d{{1,2}}/\d{{1,2}}(?:/\d{{2,4}})?|(?:{_MONTH_NAMES})\s+\d{{1,2}}(?:,?\s+\d{{4}})?)",
     re.IGNORECASE,
 )
 
