@@ -213,37 +213,70 @@ def launch_gui(host: str = "0.0.0.0", port: int = 8080) -> None:
             tab_settings = ui.tab("Settings", icon="settings")
 
         with ui.tab_panels(tabs, value=tab_chart).classes("w-full px-4"):
-            # ── Performance Chart ───────────────────────────
+            # ── Performance Chart (ECharts) ─────────────────
             with ui.tab_panel(tab_chart):
-                chart = ui.chart({
-                    "title": {"text": "Cumulative P&L", "style": {"color": "#fff"}},
-                    "chart": {"type": "area", "backgroundColor": "#1a1d29"},
+                echart = ui.echart({
+                    "backgroundColor": "#1a1d29",
+                    "title": {
+                        "text": "Cumulative P&L",
+                        "textStyle": {"color": "#fff", "fontSize": 16},
+                        "left": "center",
+                    },
+                    "tooltip": {
+                        "trigger": "axis",
+                        "backgroundColor": "#1e2230",
+                        "borderColor": "#333",
+                        "textStyle": {"color": "#ccc"},
+                    },
+                    "legend": {
+                        "data": ["Net P&L", "Fees"],
+                        "textStyle": {"color": "#ccc"},
+                        "bottom": 0,
+                    },
+                    "grid": {"left": "8%", "right": "4%", "top": "15%", "bottom": "15%"},
                     "xAxis": {
-                        "categories": [],
-                        "labels": {"style": {"color": "#999"}},
+                        "type": "category",
+                        "data": [],
+                        "axisLabel": {"color": "#999"},
+                        "axisLine": {"lineStyle": {"color": "#444"}},
                     },
                     "yAxis": {
-                        "title": {"text": "P&L ($)", "style": {"color": "#999"}},
-                        "labels": {"style": {"color": "#999"}},
-                        "gridLineColor": "#333",
+                        "type": "value",
+                        "name": "P&L ($)",
+                        "nameTextStyle": {"color": "#999"},
+                        "axisLabel": {"color": "#999"},
+                        "splitLine": {"lineStyle": {"color": "#333"}},
                     },
-                    "series": [{
-                        "name": "Net P&L",
-                        "data": [],
-                        "color": "#22c55e",
-                        "fillColor": {
-                            "linearGradient": {"x1": 0, "y1": 0, "x2": 0, "y2": 1},
-                            "stops": [[0, "rgba(34,197,94,0.3)"], [1, "rgba(34,197,94,0)"]],
+                    "series": [
+                        {
+                            "name": "Net P&L",
+                            "type": "line",
+                            "data": [],
+                            "smooth": True,
+                            "symbol": "circle",
+                            "symbolSize": 6,
+                            "lineStyle": {"color": "#22c55e", "width": 2},
+                            "itemStyle": {"color": "#22c55e"},
+                            "areaStyle": {
+                                "color": {
+                                    "type": "linear",
+                                    "x": 0, "y": 0, "x2": 0, "y2": 1,
+                                    "colorStops": [
+                                        {"offset": 0, "color": "rgba(34,197,94,0.35)"},
+                                        {"offset": 1, "color": "rgba(34,197,94,0)"},
+                                    ],
+                                },
+                            },
                         },
-                    }, {
-                        "name": "Fees",
-                        "data": [],
-                        "color": "#eab308",
-                        "type": "column",
-                    }],
-                    "legend": {"itemStyle": {"color": "#ccc"}},
-                    "plotOptions": {"area": {"marker": {"enabled": True, "radius": 3}}},
-                }).classes("w-full h-80")
+                        {
+                            "name": "Fees",
+                            "type": "bar",
+                            "data": [],
+                            "itemStyle": {"color": "#eab308", "borderRadius": [3, 3, 0, 0]},
+                            "barMaxWidth": 20,
+                        },
+                    ],
+                }).classes("w-full").style("height: 350px")
 
             # ── Positions ───────────────────────────────────
             with ui.tab_panel(tab_positions):
@@ -449,10 +482,10 @@ def launch_gui(host: str = "0.0.0.0", port: int = 8080) -> None:
                         cumulative.append(round(running, 2))
                     fees_data = [round(h["fees_paid"], 2) for h in history]
 
-                    chart.options["xAxis"]["categories"] = dates
-                    chart.options["series"][0]["data"] = cumulative
-                    chart.options["series"][1]["data"] = fees_data
-                    chart.update()
+                    echart.options["xAxis"]["data"] = dates
+                    echart.options["series"][0]["data"] = cumulative
+                    echart.options["series"][1]["data"] = fees_data
+                    echart.update()
 
                 # Update logs
                 log_lines = [
