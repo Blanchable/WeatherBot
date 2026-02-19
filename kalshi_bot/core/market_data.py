@@ -215,7 +215,7 @@ class MarketDataManager:
         return max(0.02, min(0.50, vol * np.sqrt(len(returns))))
 
     def get_microprice(self, ticker: str) -> Optional[float]:
-        """Volume-weighted mid price (microprice) for better fair value estimation."""
+        """Volume-weighted mid price (microprice)."""
         ob = self.get_orderbook(ticker)
         if not ob or ob.best_bid is None or ob.best_ask is None:
             return None
@@ -225,3 +225,27 @@ class MarketDataManager:
         if total == 0:
             return ob.mid_price
         return (ob.best_bid * ask_qty + ob.best_ask * bid_qty) / total
+
+    def get_smoothed_fair_value(self, ticker: str, alpha: float = 0.3) -> Optional[float]:
+        """EWMA-smoothed fair value that resists sudden jumps.
+
+        Prevents the bot from chasing the microprice into a falling/rising
+        market where informed traders are picking us off on every fill.
+        alpha controls responsiveness: lower = smoother (0.3 = 30% new, 70% old).
+        """
+        raw = self.get_microprice(ticker)
+        if raw is None:
+            return None
+
+        with self._lock:
+            if not hasattr(self, "_ewma_values"):
+                self._ewma_values: dict[str, float] = {}
+
+            prev = self._ewma_values.get(ticker)
+            if prev is None:
+                self._ewma_values[ticker] = raw
+                return raw
+
+            smoothed = alpha * raw + (1 - alpha) * prev
+            self._ewma_values[ticker] = smoothed
+            return smoothed

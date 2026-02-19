@@ -35,7 +35,7 @@ class ApiConfig:
 @dataclass
 class StrategyConfig:
     # Spread parameters
-    min_spread_cents: int = 3
+    min_spread_cents: int = 6
     max_spread_cents: int = 15
     base_spread_cents: int = 5
 
