@@ -53,11 +53,14 @@ if not exist ".env" (
 echo.
 echo Setup complete.
 echo.
-echo Next steps:
-echo   1) Edit .env
-echo   2) Run tests:  pytest
-echo   3) Start paper bot: python -m bot.main --mode paper
-echo   4) Open GUI:         python -m bot.main --mode paper --gui
+echo Launching GUI now in paper mode...
 echo.
-pause
+echo Reminder: edit .env before enabling live trading.
+echo.
+python -m bot.main --mode paper --gui
+if errorlevel 1 (
+  echo [WARN] GUI exited with an error code.
+  echo You can retry with: python -m bot.main --mode paper --gui
+  pause
+)
 

@@ -71,7 +71,7 @@ Run:
 setup_wizard.bat
 ```
 
-This initializes a virtual environment, installs dependencies, and creates `.env`.
+This initializes a virtual environment, installs dependencies, creates `.env`, and then launches the paper-trading GUI automatically.
 
 ## Configure Environment
 
