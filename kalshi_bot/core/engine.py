@@ -174,8 +174,12 @@ class BotEngine:
                 time.sleep(5)
 
     def _discover_markets(self):
-        """Find suitable markets to trade based on config."""
-        new_markets = []
+        """Find suitable markets to trade, ranked by liquidity.
+
+        For series with many strike levels (e.g. KXBTC with 75 buckets),
+        only the most liquid near-the-money markets are selected.
+        """
+        candidates = []  # (score, ticker) tuples
         mc = self.config.market
 
         for series_ticker in mc.target_series:
@@ -184,15 +188,21 @@ class BotEngine:
                 if not events:
                     events = self.api.get_events(series_ticker=series_ticker)
 
-                for event in events[:5]:
+                for event in events[:3]:
                     event_ticker = event.get("event_ticker", "")
                     markets = event.get("markets", [])
                     if not markets:
                         markets = self.api.get_markets(event_ticker=event_ticker)
 
+                    event_candidates = []
+
                     for market in markets:
                         ticker = market.get("ticker", "")
                         if not ticker:
+                            continue
+
+                        status = market.get("status", "")
+                        if status not in ("open", "active", ""):
                             continue
 
                         self.market_data.update_market_info(ticker, market)
@@ -200,10 +210,6 @@ class BotEngine:
                         if not info:
                             continue
 
-                        if info.status not in ("open", "active", ""):
-                            continue
-
-                        # Filter by close time (when trading ends), not expiration (settlement)
                         hours_left = info.hours_to_close
                         if hours_left is not None:
                             if hours_left > mc.max_hours_to_expiry:
@@ -211,35 +217,66 @@ class BotEngine:
                             if hours_left < mc.min_hours_to_expiry:
                                 continue
 
-                        new_markets.append(ticker)
+                        # Price filter: skip deep OTM buckets with no action
+                        yes_bid = market.get("yes_bid", 0) or 0
+                        yes_ask = market.get("yes_ask", 0) or 0
+                        mid = (yes_bid + yes_ask) / 2 if (yes_bid and yes_ask) else yes_ask or yes_bid
+                        if mid < mc.min_price_cents or mid > mc.max_price_cents:
+                            if yes_bid == 0 and yes_ask == 0:
+                                continue
+                            if mid > 0 and (mid < mc.min_price_cents or mid > mc.max_price_cents):
+                                continue
+
+                        # Score: prefer markets closer to 50c (near the money),
+                        # with tighter spreads, and more volume
+                        volume = market.get("volume", 0) or 0
+                        open_interest = market.get("open_interest", 0) or 0
+                        spread = (yes_ask - yes_bid) if (yes_ask and yes_bid) else 99
+                        nearness = 50 - abs(50 - mid) if mid > 0 else 0
+
+                        score = (
+                            nearness * 3
+                            + min(volume, 5000) / 50
+                            + min(open_interest, 2000) / 40
+                            - spread * 2
+                        )
+
+                        event_candidates.append((score, ticker))
+
+                    # Per-event cap: only keep the best N from this event
+                    event_candidates.sort(key=lambda x: x[0], reverse=True)
+                    candidates.extend(event_candidates[:mc.max_markets_per_event])
 
             except Exception as e:
                 logger.error("Error discovering markets for %s: %s", series_ticker, e)
 
+        # Global ranking: pick the best markets across all series
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        new_markets = [ticker for _, ticker in candidates[:mc.max_active_markets]]
+
         if new_markets:
-            self._active_markets = new_markets[:10]
-            logger.info("Active markets (%d): %s", len(self._active_markets), self._active_markets)
+            self._active_markets = new_markets
+            logger.info(
+                "Active markets (%d): %s",
+                len(self._active_markets),
+                [f"{t} (score={s:.0f})" for s, t in candidates[:len(new_markets)]],
+            )
         elif not self._active_markets:
             logger.warning("No suitable markets found for series: %s", mc.target_series)
 
     def _update_market_data(self):
-        """Fetch current order book and trade data for active markets."""
+        """Fetch order books for active markets. Trades fetched less often."""
         for ticker in self._active_markets:
             try:
-                # Order book
                 ob_data = self.api.get_orderbook(ticker)
                 if ob_data:
                     self.market_data.update_orderbook(ticker, ob_data)
 
-                # Recent trades
-                trades = self.api.get_trades(ticker, limit=20)
-                if trades:
-                    self.market_data.add_trades(ticker, trades)
-
-                # Market info refresh
-                market_data = self.api.get_market(ticker)
-                if market_data:
-                    self.market_data.update_market_info(ticker, market_data)
+                # Trades only every 4th cycle to save API calls
+                if self._cycle_count % 4 == 0:
+                    trades = self.api.get_trades(ticker, limit=20)
+                    if trades:
+                        self.market_data.add_trades(ticker, trades)
 
             except Exception as e:
                 logger.error("Error updating data for %s: %s", ticker, e)

@@ -78,11 +78,16 @@ class MarketConfig:
     # Which series/event tickers to trade
     target_series: list = field(default_factory=lambda: ["KXBTC", "KXHIGHNY", "KXINX"])
     auto_select_markets: bool = True
-    min_market_volume: int = 50
-    min_market_open_interest: int = 20
     # Only trade markets closing within this window (hours from now)
     max_hours_to_expiry: float = 36.0
     min_hours_to_expiry: float = 0.25
+    # How many markets to actively quote (total across all series)
+    max_active_markets: int = 12
+    # Per-event cap to avoid flooding on series with many strike levels (e.g. KXBTC)
+    max_markets_per_event: int = 6
+    # Only consider markets whose yes_bid or yes_ask falls in this range (filters OTM junk)
+    min_price_cents: int = 5
+    max_price_cents: int = 95
 
 
 @dataclass

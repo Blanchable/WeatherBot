@@ -227,8 +227,12 @@ class ControlPanel:
         mkt_frame = ttk.LabelFrame(scroll_frame, text="Market Selection", padding=10)
         mkt_frame.pack(fill=tk.X, padx=5, pady=5)
         self._add_entry(mkt_frame, "Target Series (comma-sep)", "market.target_series", ",".join(self.config.market.target_series))
-        self._add_entry(mkt_frame, "Max Hours to Expiry", "market.max_hours_to_expiry", self.config.market.max_hours_to_expiry)
-        self._add_entry(mkt_frame, "Min Hours to Expiry", "market.min_hours_to_expiry", self.config.market.min_hours_to_expiry)
+        self._add_entry(mkt_frame, "Max Hours to Close", "market.max_hours_to_expiry", self.config.market.max_hours_to_expiry)
+        self._add_entry(mkt_frame, "Min Hours to Close", "market.min_hours_to_expiry", self.config.market.min_hours_to_expiry)
+        self._add_entry(mkt_frame, "Max Active Markets", "market.max_active_markets", self.config.market.max_active_markets)
+        self._add_entry(mkt_frame, "Max Markets Per Event", "market.max_markets_per_event", self.config.market.max_markets_per_event)
+        self._add_entry(mkt_frame, "Min Price (cents)", "market.min_price_cents", self.config.market.min_price_cents)
+        self._add_entry(mkt_frame, "Max Price (cents)", "market.max_price_cents", self.config.market.max_price_cents)
 
         # Save button
         save_btn = ttk.Button(scroll_frame, text="Save Settings", command=self._save_settings)
