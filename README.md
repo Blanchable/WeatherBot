@@ -45,12 +45,21 @@ Double-click **`start.bat`**
 
 (If needed: `chmod +x start.sh` first)
 
+### Before you start
+
+You need a Kalshi API key:
+1. Log in to [kalshi.com](https://kalshi.com) (or the demo portal)
+2. Go to **Settings > API Keys**
+3. Click **Create API Key**
+4. Download the private key `.pem` file and save it somewhere safe
+5. Copy the **Key ID** shown on the page
+
 ### What happens on first launch
 
 1. Verifies Python 3.10+ is installed
 2. Installs Tkinter if missing (Linux only)
 3. Creates a virtual environment and installs dependencies
-4. Opens the **Setup Wizard** to walk you through credentials, environment, and strategy
+4. Opens the **Setup Wizard** to enter your API Key ID, select your `.pem` file, choose environment, and configure strategy
 5. Launches the **Control Panel**
 
 On subsequent launches, steps 1-4 are skipped (already done) and the control panel opens directly.
@@ -126,7 +135,7 @@ The control panel provides:
 
 - Python 3.10+
 - Tkinter (for GUI)
-- Kalshi account (demo or live)
+- Kalshi account (demo or live) with an API key (RSA key pair)
 
 ## Disclaimer
 

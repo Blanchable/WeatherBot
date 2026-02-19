@@ -123,8 +123,8 @@ class BotConfig:
 
 @dataclass
 class Credentials:
-    email: str = ""
-    password: str = ""
+    api_key_id: str = ""
+    private_key_path: str = ""
 
     def save(self):
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -139,10 +139,26 @@ class Credentials:
         try:
             with open(CREDENTIALS_FILE) as f:
                 data = json.load(f)
-            return cls(**data)
-        except (json.JSONDecodeError, KeyError):
+            # Ignore legacy email/password fields
+            filtered = {k: v for k, v in data.items() if k in ("api_key_id", "private_key_path")}
+            return cls(**filtered)
+        except (json.JSONDecodeError, KeyError, TypeError):
             return cls()
 
     @property
     def is_configured(self) -> bool:
-        return bool(self.email and self.password)
+        return bool(self.api_key_id and self.private_key_path)
+
+    def load_private_key(self):
+        """Load and return the RSA private key object, or None on failure."""
+        if not self.private_key_path:
+            return None
+        key_path = Path(self.private_key_path)
+        if not key_path.exists():
+            return None
+        try:
+            from cryptography.hazmat.primitives.serialization import load_pem_private_key
+            with open(key_path, "rb") as f:
+                return load_pem_private_key(f.read(), password=None)
+        except Exception:
+            return None

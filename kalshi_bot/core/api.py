@@ -1,12 +1,16 @@
-"""Kalshi REST API client with authentication and rate limiting."""
+"""Kalshi REST API client with RSA per-request signing."""
 
+import base64
 import time
 import logging
 import threading
 from datetime import datetime, timezone
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 import requests
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 from kalshi_bot.core.config import ApiConfig, Credentials
 
@@ -34,55 +38,77 @@ class RateLimiter:
 
 
 class KalshiApiClient:
-    """Client for Kalshi Trading API v2."""
+    """Client for Kalshi Trading API v2 with RSA key authentication.
+
+    Kalshi requires each request to be signed with an RSA private key.
+    The signature covers: timestamp_ms + method + path
+    Header format: KALSHI-RSA-SHA256 <key_id>:<signature>:<timestamp>
+    """
 
     def __init__(self, config: ApiConfig, credentials: Credentials):
         self.config = config
         self.credentials = credentials
         self.session = requests.Session()
-        self.token: Optional[str] = None
-        self.token_expiry: Optional[datetime] = None
-        self.member_id: Optional[str] = None
+        self.session.headers["Content-Type"] = "application/json"
+        self._private_key = None
         self.rate_limiter = RateLimiter(max_calls=8, period=1.0)
         self._lock = threading.Lock()
 
-    def _ensure_auth(self):
-        if self.token and self.token_expiry and datetime.now(timezone.utc) < self.token_expiry:
-            return
-        self.login()
-
     def login(self) -> bool:
-        try:
-            resp = self.session.post(
-                f"{self.config.base_url}/login",
-                json={"email": self.credentials.email, "password": self.credentials.password},
-                timeout=10,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            self.token = data.get("token")
-            self.member_id = data.get("member_id")
-            self.session.headers["Authorization"] = f"Bearer {self.token}"
-            # Tokens typically last ~24 hours; refresh well before expiry
-            self.token_expiry = datetime.now(timezone.utc).replace(
-                hour=23, minute=59, second=59
-            )
-            logger.info("Logged in to Kalshi (member_id=%s, demo=%s)", self.member_id, self.config.use_demo)
-            return True
-        except requests.RequestException as e:
-            logger.error("Login failed: %s", e)
+        """Load the private key and verify connectivity."""
+        self._private_key = self.credentials.load_private_key()
+        if self._private_key is None:
+            logger.error("Failed to load RSA private key from: %s", self.credentials.private_key_path)
             return False
 
+        try:
+            status = self.get_exchange_status()
+            if status is not None:
+                logger.info(
+                    "Connected to Kalshi (key=%s..., demo=%s)",
+                    self.credentials.api_key_id[:8],
+                    self.config.use_demo,
+                )
+                return True
+            logger.error("Connected but exchange status returned None")
+            return False
+        except Exception as e:
+            logger.error("Connection test failed: %s", e)
+            return False
+
+    def _sign_request(self, method: str, path: str) -> dict[str, str]:
+        """Generate auth headers by RSA-signing the request."""
+        timestamp_ms = str(int(time.time() * 1000))
+        message = timestamp_ms + method.upper() + path
+        signature = self._private_key.sign(
+            message.encode("utf-8"),
+            padding.PKCS1v15(),
+            hashes.SHA256(),
+        )
+        sig_b64 = base64.b64encode(signature).decode("utf-8")
+        return {
+            "Authorization": f"KALSHI-RSA-SHA256 {self.credentials.api_key_id}:{sig_b64}:{timestamp_ms}",
+        }
+
     def _request(self, method: str, path: str, **kwargs) -> Optional[dict]:
-        self._ensure_auth()
+        if self._private_key is None:
+            logger.error("Cannot make request - private key not loaded")
+            return None
+
         self.rate_limiter.acquire()
         url = f"{self.config.base_url}{path}"
+        auth_headers = self._sign_request(method, path)
+
         try:
-            resp = self.session.request(method, url, timeout=15, **kwargs)
+            resp = self.session.request(
+                method, url, timeout=15, headers=auth_headers, **kwargs,
+            )
             if resp.status_code == 401:
-                logger.warning("Token expired, re-authenticating")
-                self.login()
-                resp = self.session.request(method, url, timeout=15, **kwargs)
+                logger.error(
+                    "Auth failed (401) for %s %s - check API key and private key",
+                    method, path,
+                )
+                return None
             resp.raise_for_status()
             if resp.content:
                 return resp.json()
@@ -227,9 +253,7 @@ class KalshiApiClient:
         params = {}
         if market_ticker:
             params["ticker"] = market_ticker
-        # Use POST to batch cancel
         data = self.post("/portfolio/orders/batched", json_data={"action": "cancel_all", **params})
-        # Fallback: cancel individually
         if data is None:
             orders = self.get_orders(ticker=market_ticker, status="resting")
             cancelled = 0

@@ -274,7 +274,8 @@ class ControlPanel:
     # ── Actions ─────────────────────────────────────────────────
     def _start_bot(self):
         if not self.credentials.is_configured:
-            messagebox.showerror("Error", "Credentials not configured. Run the setup wizard first.")
+            messagebox.showerror("Error", "API key not configured. Run the setup wizard first.\n\n"
+                                 "Use: ./start.sh --setup  (or start.bat --setup)")
             return
 
         self.engine = BotEngine(self.config, self.credentials)

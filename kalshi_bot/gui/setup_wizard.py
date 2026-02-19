@@ -1,7 +1,8 @@
 """Setup wizard - guides users through initial configuration."""
 
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
+from pathlib import Path
 from typing import Optional
 
 from kalshi_bot.core.config import BotConfig, Credentials, ApiConfig
@@ -32,7 +33,7 @@ class SetupWizard:
         else:
             self.root = tk.Tk()
         self.root.title("Kalshi Bot - Setup Wizard")
-        self.root.geometry("620x520")
+        self.root.geometry("650x560")
         self.root.resizable(False, False)
         self.root.configure(bg=COLORS["bg"])
 
@@ -52,12 +53,11 @@ class SetupWizard:
         style.configure("Accent.TButton", background=COLORS["accent"])
 
     def _build_ui(self):
-        # Progress indicator
         self.progress_frame = ttk.Frame(self.root)
         self.progress_frame.pack(fill=tk.X, padx=30, pady=(20, 10))
 
         self.step_labels = []
-        steps = ["Welcome", "Credentials", "Environment", "Strategy", "Done"]
+        steps = ["Welcome", "API Key", "Environment", "Strategy", "Done"]
         for i, step_name in enumerate(steps):
             lbl = ttk.Label(self.progress_frame, text=f"{i+1}. {step_name}", style="Sub.TLabel")
             lbl.pack(side=tk.LEFT, padx=8)
@@ -65,11 +65,9 @@ class SetupWizard:
 
         ttk.Separator(self.root).pack(fill=tk.X, padx=20, pady=5)
 
-        # Content area
         self.content_frame = ttk.Frame(self.root)
         self.content_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=10)
 
-        # Navigation
         nav_frame = ttk.Frame(self.root)
         nav_frame.pack(fill=tk.X, padx=30, pady=(5, 20))
 
@@ -108,6 +106,7 @@ class SetupWizard:
         ]
         builders[step]()
 
+    # ── Step 0: Welcome ─────────────────────────────────────
     def _build_welcome(self):
         ttk.Label(self.content_frame, text="Welcome to Kalshi Market Maker",
                   style="Header.TLabel").pack(pady=(10, 20))
@@ -116,43 +115,46 @@ class SetupWizard:
             "This wizard will help you configure the bot.\n\n"
             "You will need:\n"
             "  1. A Kalshi account (demo or live)\n"
-            "  2. Your login email and password\n\n"
-            "The bot uses an Avellaneda-Stoikov market making\n"
-            "strategy adapted for binary event markets.\n\n"
-            "It targets weather markets (e.g., NYC high temperature)\n"
-            "which offer daily contracts with good liquidity.\n\n"
+            "  2. An API key from your Kalshi account settings\n\n"
+            "To create an API key:\n"
+            "  1. Log in to kalshi.com\n"
+            "  2. Go to Settings > API Keys\n"
+            "  3. Click 'Create API Key'\n"
+            "  4. Download the private key (.pem file)\n"
+            "  5. Copy the Key ID shown on the page\n\n"
             "We recommend starting in DEMO mode to test\n"
             "before switching to live trading."
         )
         ttk.Label(self.content_frame, text=info, justify=tk.LEFT,
-                  wraplength=500).pack(anchor=tk.W)
+                  wraplength=540).pack(anchor=tk.W)
 
+    # ── Step 1: API Key ─────────────────────────────────────
     def _build_credentials(self):
-        ttk.Label(self.content_frame, text="Kalshi Login Credentials",
+        ttk.Label(self.content_frame, text="Kalshi API Key",
                   style="Header.TLabel").pack(pady=(10, 5))
-        ttk.Label(self.content_frame, text="These are stored locally and never shared.",
+        ttk.Label(self.content_frame, text="From kalshi.com > Settings > API Keys. Stored locally, never shared.",
                   style="Sub.TLabel").pack(pady=(0, 15))
 
         form = ttk.Frame(self.content_frame)
         form.pack(fill=tk.X)
 
-        ttk.Label(form, text="Email:").grid(row=0, column=0, sticky=tk.W, pady=8)
-        self.email_var = tk.StringVar(value=self.credentials.email)
-        email_entry = ttk.Entry(form, textvariable=self.email_var, width=40, font=("Consolas", 11))
-        email_entry.grid(row=0, column=1, padx=10, pady=8)
+        # API Key ID
+        ttk.Label(form, text="API Key ID:").grid(row=0, column=0, sticky=tk.W, pady=8)
+        self.key_id_var = tk.StringVar(value=self.credentials.api_key_id)
+        key_entry = ttk.Entry(form, textvariable=self.key_id_var, width=44, font=("Consolas", 10))
+        key_entry.grid(row=0, column=1, columnspan=2, padx=10, pady=8, sticky=tk.W)
 
-        ttk.Label(form, text="Password:").grid(row=1, column=0, sticky=tk.W, pady=8)
-        self.password_var = tk.StringVar(value=self.credentials.password)
-        pass_entry = ttk.Entry(form, textvariable=self.password_var, width=40, show="*", font=("Consolas", 11))
-        pass_entry.grid(row=1, column=1, padx=10, pady=8)
+        # Private Key File
+        ttk.Label(form, text="Private Key:").grid(row=1, column=0, sticky=tk.W, pady=8)
+        self.key_path_var = tk.StringVar(value=self.credentials.private_key_path)
+        path_entry = ttk.Entry(form, textvariable=self.key_path_var, width=34, font=("Consolas", 10))
+        path_entry.grid(row=1, column=1, padx=(10, 5), pady=8, sticky=tk.W)
+        browse_btn = ttk.Button(form, text="Browse", command=self._browse_key_file)
+        browse_btn.grid(row=1, column=2, pady=8)
 
-        self.show_pass_var = tk.BooleanVar(value=False)
-        show_cb = tk.Checkbutton(
-            form, text="Show password", variable=self.show_pass_var,
-            bg=COLORS["bg"], fg=COLORS["text_dim"], selectcolor=COLORS["bg_secondary"],
-            command=lambda: pass_entry.configure(show="" if self.show_pass_var.get() else "*"),
-        )
-        show_cb.grid(row=2, column=1, sticky=tk.W, padx=10)
+        self.key_status_label = ttk.Label(form, text="", style="Sub.TLabel")
+        self.key_status_label.grid(row=2, column=1, columnspan=2, sticky=tk.W, padx=10)
+        self._update_key_status()
 
         # Test connection button
         test_frame = ttk.Frame(self.content_frame)
@@ -162,6 +164,38 @@ class SetupWizard:
         self.test_result = ttk.Label(test_frame, text="", style="Sub.TLabel")
         self.test_result.pack(side=tk.LEFT, padx=10)
 
+        # Help text
+        ttk.Label(self.content_frame, text=(
+            "How to get your API key:\n"
+            "  1. Log in at kalshi.com (or demo portal)\n"
+            "  2. Go to Settings > API Keys\n"
+            "  3. Click 'Create API Key'\n"
+            "  4. Save the .pem file somewhere safe\n"
+            "  5. Copy the Key ID and paste it above"
+        ), style="Sub.TLabel", justify=tk.LEFT).pack(anchor=tk.W, pady=(10, 0))
+
+    def _browse_key_file(self):
+        path = filedialog.askopenfilename(
+            title="Select Private Key File",
+            filetypes=[("PEM files", "*.pem"), ("Key files", "*.key"), ("All files", "*.*")],
+        )
+        if path:
+            self.key_path_var.set(path)
+            self._update_key_status()
+
+    def _update_key_status(self):
+        path = self.key_path_var.get().strip()
+        if not path:
+            return
+        p = Path(path)
+        if not p.exists():
+            self.key_status_label.configure(text="File not found", foreground=COLORS["red"])
+        elif p.stat().st_size < 100:
+            self.key_status_label.configure(text="File seems too small", foreground=COLORS["red"])
+        else:
+            self.key_status_label.configure(text="Key file found", foreground=COLORS["green"])
+
+    # ── Step 2: Environment ──────────────────────────────────
     def _build_environment(self):
         ttk.Label(self.content_frame, text="Trading Environment",
                   style="Header.TLabel").pack(pady=(10, 15))
@@ -190,6 +224,7 @@ class SetupWizard:
         ttk.Label(live_frame, text="    Trade with real money. Use with caution.\n"
                   "    Make sure risk limits are set appropriately.", style="Sub.TLabel").pack(anchor=tk.W)
 
+    # ── Step 3: Strategy ──────────────────────────────────────
     def _build_strategy(self):
         ttk.Label(self.content_frame, text="Strategy Configuration",
                   style="Header.TLabel").pack(pady=(10, 5))
@@ -223,13 +258,19 @@ class SetupWizard:
             "  KXRAIN   - Daily Rainfall"
         ), style="Sub.TLabel", justify=tk.LEFT).pack(anchor=tk.W, pady=10)
 
+    # ── Step 4: Done ──────────────────────────────────────────
     def _build_done(self):
         ttk.Label(self.content_frame, text="Setup Complete!",
                   style="Header.TLabel").pack(pady=(20, 15))
 
+        key_display = self.credentials.api_key_id
+        if len(key_display) > 16:
+            key_display = key_display[:8] + "..." + key_display[-4:]
+
         summary = (
             f"Environment: {'Demo' if self.config.api.use_demo else 'LIVE'}\n"
-            f"Email: {self.credentials.email}\n"
+            f"API Key: {key_display}\n"
+            f"Private Key: {Path(self.credentials.private_key_path).name}\n"
             f"Order Size: {self.config.strategy.order_size}\n"
             f"Min Spread: {self.config.strategy.min_spread_cents}c\n"
             f"Max Position: {self.config.strategy.max_position}\n"
@@ -244,19 +285,24 @@ class SetupWizard:
             "You can adjust all settings later from the Settings tab."
         ), style="Sub.TLabel").pack(pady=15)
 
+    # ── Connection Test ───────────────────────────────────────
     def _test_connection(self):
         from kalshi_bot.core.api import KalshiApiClient
 
-        email = self.email_var.get().strip()
-        password = self.password_var.get().strip()
-        if not email or not password:
-            self.test_result.configure(text="Enter email and password first", foreground=COLORS["red"])
+        key_id = self.key_id_var.get().strip()
+        key_path = self.key_path_var.get().strip()
+        if not key_id or not key_path:
+            self.test_result.configure(text="Enter API Key ID and select private key file", foreground=COLORS["red"])
+            return
+
+        if not Path(key_path).exists():
+            self.test_result.configure(text="Private key file not found", foreground=COLORS["red"])
             return
 
         self.test_result.configure(text="Testing...", foreground=COLORS["text_dim"])
         self.root.update()
 
-        test_creds = Credentials(email=email, password=password)
+        test_creds = Credentials(api_key_id=key_id, private_key_path=key_path)
         test_config = ApiConfig()
         test_config.set_environment(self.config.api.use_demo)
         client = KalshiApiClient(test_config, test_creds)
@@ -270,8 +316,12 @@ class SetupWizard:
                 foreground=COLORS["green"],
             )
         else:
-            self.test_result.configure(text="Connection failed - check credentials", foreground=COLORS["red"])
+            self.test_result.configure(
+                text="Connection failed - check API key ID and .pem file",
+                foreground=COLORS["red"],
+            )
 
+    # ── Navigation ────────────────────────────────────────────
     def _next_step(self):
         if not self._validate_step():
             return
@@ -289,17 +339,23 @@ class SetupWizard:
 
     def _validate_step(self) -> bool:
         if self.current_step == 1:
-            email = self.email_var.get().strip()
-            password = self.password_var.get().strip()
-            if not email or not password:
-                messagebox.showwarning("Missing Info", "Please enter your email and password.")
+            key_id = self.key_id_var.get().strip()
+            key_path = self.key_path_var.get().strip()
+            if not key_id:
+                messagebox.showwarning("Missing Info", "Please enter your API Key ID.")
+                return False
+            if not key_path:
+                messagebox.showwarning("Missing Info", "Please select your private key (.pem) file.")
+                return False
+            if not Path(key_path).exists():
+                messagebox.showwarning("File Not Found", f"Private key file not found:\n{key_path}")
                 return False
         return True
 
     def _save_step(self):
         if self.current_step == 1:
-            self.credentials.email = self.email_var.get().strip()
-            self.credentials.password = self.password_var.get().strip()
+            self.credentials.api_key_id = self.key_id_var.get().strip()
+            self.credentials.private_key_path = self.key_path_var.get().strip()
 
         elif self.current_step == 2:
             self.config.api.set_environment(self.demo_var.get())
