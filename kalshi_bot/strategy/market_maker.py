@@ -1,11 +1,11 @@
-"""Avellaneda-Stoikov market making strategy adapted for Kalshi binary event markets.
+"""Trend-aware market making strategy for Kalshi binary event markets.
 
-Key defenses against adverse selection:
-- EWMA-smoothed fair value (doesn't chase sudden microprice jumps)
-- Spread widens with inventory (holding risk costs money)
-- Bid always below fair value, ask always above (never buy above value)
-- Requote only when price moves significantly (reduces getting picked off
-  during cancel-replace window)
+Key principles:
+- Don't buy into a falling market, don't sell into a rising market
+- EWMA-smoothed fair value resists chasing sudden moves
+- Spread widens with inventory to penalize holding risk
+- Bid always below fair value, ask always above
+- Asymmetric quoting: skip the side that's getting adversely selected
 """
 
 import logging
@@ -29,10 +29,18 @@ class Quote:
     fair_value: float
     spread: float
     inventory_skew: float
+    skip_bid: bool = False
+    skip_ask: bool = False
     reason: str = ""
 
     @property
     def is_valid(self) -> bool:
+        if self.skip_bid and self.skip_ask:
+            return False
+        if self.skip_bid:
+            return 2 <= self.ask_price <= 99 and self.ask_size > 0
+        if self.skip_ask:
+            return 1 <= self.bid_price <= 98 and self.bid_size > 0
         return (
             1 <= self.bid_price <= 98
             and 2 <= self.ask_price <= 99
@@ -56,9 +64,41 @@ class MarketMakingStrategy:
         self.config = config
         self.market_data = market_data
         self.positions: dict[str, int] = {}
+        self._fair_value_history: dict[str, list[float]] = {}
 
     def update_position(self, ticker: str, position: int):
         self.positions[ticker] = position
+
+    def _detect_trend(self, ticker: str, current_fv: float) -> str:
+        """Detect short-term price trend. Returns 'up', 'down', or 'flat'."""
+        history = self._fair_value_history.get(ticker, [])
+        history.append(current_fv)
+        if len(history) > 10:
+            history = history[-10:]
+        self._fair_value_history[ticker] = history
+
+        if len(history) < 4:
+            return "flat"
+
+        # Compare current to average of older values
+        old_avg = sum(history[:-2]) / len(history[:-2])
+        move = current_fv - old_avg
+
+        # Threshold: 2c move counts as a trend
+        if move > 2.0:
+            return "up"
+        elif move < -2.0:
+            return "down"
+        return "flat"
+
+    def _get_book_imbalance(self, ticker: str) -> float:
+        """Order book imbalance: >0 means buy pressure, <0 means sell pressure."""
+        ob = self.market_data.get_orderbook(ticker)
+        if not ob:
+            return 0.0
+        bid_depth = ob.bid_depth or 1
+        ask_depth = ob.ask_depth or 1
+        return (bid_depth - ask_depth) / (bid_depth + ask_depth)
 
     def compute_quote(self, ticker: str) -> Optional[Quote]:
         ob = self.market_data.get_orderbook(ticker)
@@ -67,7 +107,6 @@ class MarketMakingStrategy:
         if not ob or ob.best_bid is None or ob.best_ask is None:
             return None
 
-        # Use EWMA-smoothed fair value to avoid chasing
         fair_value = self.market_data.get_smoothed_fair_value(ticker, alpha=0.3)
         if fair_value is None:
             return None
@@ -75,11 +114,38 @@ class MarketMakingStrategy:
         if fair_value < 5 or fair_value > 95:
             return _reject(ticker, fair_value, "Price too extreme")
 
+        # ── Trend detection ─────────────────────────────────
+        trend = self._detect_trend(ticker, fair_value)
+        imbalance = self._get_book_imbalance(ticker)
+
+        skip_bid = False
+        skip_ask = False
+
+        # Don't buy into a falling market
+        if trend == "down":
+            skip_bid = True
+        # Don't sell into a rising market
+        elif trend == "up":
+            skip_ask = True
+
+        # Also use order book imbalance as confirmation
+        # Strong sell imbalance (lots on ask side) → don't bid
+        if imbalance < -0.4:
+            skip_bid = True
+        # Strong buy imbalance → don't ask
+        elif imbalance > 0.4:
+            skip_ask = True
+
+        # But always allow the side that REDUCES inventory
+        q = self.positions.get(ticker, 0)
+        if q > 2 and skip_ask:
+            skip_ask = False  # need to sell to reduce long
+        if q < -2 and skip_bid:
+            skip_bid = False  # need to buy to reduce short
+
         # ── Base half-spread ────────────────────────────────
-        # Start from the configured minimum and widen based on conditions
         base_half = self.config.min_spread_cents / 2
 
-        # Widen based on market spread (don't undercut the market too aggressively)
         market_spread = ob.spread or self.config.min_spread_cents
         if market_spread > self.config.min_spread_cents:
             base_half = max(base_half, market_spread / 2 - 1)
@@ -89,25 +155,22 @@ class MarketMakingStrategy:
             hours = info.hours_to_close
             if hours < self.config.time_decay_start_hours:
                 T = max(0.01, hours / self.config.time_decay_start_hours)
-                base_half = base_half / max(T, 0.3)  # widen as close approaches
+                base_half = base_half / max(T, 0.3)
 
-        # ── Inventory penalty: widen spread with position size ──
-        q = self.positions.get(ticker, 0)
+        # ── Inventory spread penalty ────────────────────────
         position_ratio = abs(q) / max(self.config.max_position, 1)
         inventory_widen = position_ratio * self.config.max_spread_cents / 2
         half_spread = base_half + inventory_widen
 
-        # Clamp the half-spread
         half_spread = max(
             self.config.min_spread_cents / 2,
             min(self.config.max_spread_cents / 2, half_spread),
         )
 
-        # ── Inventory skew (shift mid toward reducing position) ──
-        # Bounded to never push bid above fv or ask below fv
+        # ── Inventory skew ──────────────────────────────────
         max_skew = half_spread * 0.6
         gamma = self.config.inventory_risk_aversion
-        raw_skew = q * gamma * 0.5  # simple linear skew: 0.5c per contract * gamma
+        raw_skew = q * gamma * 0.5
         skew = max(-max_skew, min(max_skew, raw_skew))
 
         # ── Quote prices ────────────────────────────────────
@@ -115,16 +178,13 @@ class MarketMakingStrategy:
         raw_bid = mid - half_spread
         raw_ask = mid + half_spread
 
-        # SAFETY: bid < fair_value, ask > fair_value
         bid_price = int(math.floor(min(raw_bid, fair_value - 1)))
         ask_price = int(math.ceil(max(raw_ask, fair_value + 1)))
 
-        # Enforce minimum spread
         if ask_price - bid_price < self.config.min_spread_cents:
             bid_price = int(math.floor(fair_value - self.config.min_spread_cents / 2))
             ask_price = int(math.ceil(fair_value + self.config.min_spread_cents / 2))
 
-        # Max deviation cap
         max_dev = self.config.max_spread_cents
         bid_price = max(bid_price, int(math.floor(fair_value - max_dev)))
         ask_price = min(ask_price, int(math.ceil(fair_value + max_dev)))
@@ -163,6 +223,8 @@ class MarketMakingStrategy:
             fair_value=fair_value,
             spread=ask_price - bid_price,
             inventory_skew=skew,
+            skip_bid=skip_bid,
+            skip_ask=skip_ask,
         )
 
     def should_requote(self, ticker: str, current_quote: Optional[Quote]) -> bool:
@@ -173,8 +235,12 @@ class MarketMakingStrategy:
         if new_quote is None:
             return False
 
-        # Only requote if price moved significantly (at least half the spread)
-        # This reduces cancel-replace churn which creates adverse selection windows
+        # Requote if trend changed (need to add/remove a side)
+        if new_quote.skip_bid != current_quote.skip_bid:
+            return True
+        if new_quote.skip_ask != current_quote.skip_ask:
+            return True
+
         threshold = max(2, current_quote.spread // 2)
         bid_diff = abs(new_quote.bid_price - current_quote.bid_price)
         ask_diff = abs(new_quote.ask_price - current_quote.ask_price)

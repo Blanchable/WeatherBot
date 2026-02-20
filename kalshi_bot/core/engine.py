@@ -352,11 +352,19 @@ class BotEngine:
         if current and not self.strategy.should_requote(ticker, current):
             return
 
-        # Check risk before placing
-        bid_ok, _ = self.risk_manager.can_place_order(ticker, quote.bid_size, True)
-        ask_ok, _ = self.risk_manager.can_place_order(ticker, quote.ask_size, False)
+        # Respect trend-based skip flags
+        place_bid = not quote.skip_bid
+        place_ask = not quote.skip_ask
 
-        if not bid_ok and not ask_ok:
+        # Check risk
+        if place_bid:
+            bid_ok, _ = self.risk_manager.can_place_order(ticker, quote.bid_size, True)
+            place_bid = bid_ok
+        if place_ask:
+            ask_ok, _ = self.risk_manager.can_place_order(ticker, quote.ask_size, False)
+            place_ask = ask_ok
+
+        if not place_bid and not place_ask:
             return
 
         # Cancel and replace
@@ -365,17 +373,27 @@ class BotEngine:
 
         bid_order = None
         ask_order = None
-        if bid_ok:
+        if place_bid:
             bid_order = self.order_manager.place_bid(ticker, quote.bid_price, quote.bid_size)
-        if ask_ok:
+        if place_ask:
             ask_order = self.order_manager.place_ask(ticker, quote.ask_price, quote.ask_size)
 
         if bid_order or ask_order:
             self._current_quotes[ticker] = quote
+            sides = []
+            if bid_order:
+                sides.append(f"bid={quote.bid_price}c")
+            else:
+                sides.append("bid=SKIP")
+            if ask_order:
+                sides.append(f"ask={quote.ask_price}c")
+            else:
+                sides.append("ask=SKIP")
             logger.info(
-                "Quoted %s: %dc/%dc (spread=%d, fv=%.1f, skew=%.2f)",
-                ticker, quote.bid_price, quote.ask_price,
+                "Quoted %s: %s (spread=%d, fv=%.1f, skew=%.2f, trend=%s)",
+                ticker, "/".join(sides),
                 quote.spread, quote.fair_value, quote.inventory_skew,
+                self.strategy._detect_trend(ticker, quote.fair_value),
             )
 
     def _on_kill_switch(self, reason: str):
