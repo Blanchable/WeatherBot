@@ -37,6 +37,10 @@ class BotEngine:
         self._cycle_count = 0
         self._last_error: str = ""
 
+        # Position tracking for flattening decisions
+        self._position_entry_prices: dict[str, float] = {}  # ticker -> avg entry fv
+        self._position_hold_cycles: dict[str, int] = {}  # ticker -> cycles held
+
         # Callbacks for GUI updates
         self._on_status_change: Optional[Callable] = None
         self._on_data_update: Optional[Callable] = None
@@ -150,10 +154,11 @@ class BotEngine:
                     time.sleep(5)
                     continue
 
-                # 5. Update strategy positions
+                # 5. Update strategy positions and check for stale inventory
                 for ticker in self._active_markets:
                     pos = self.risk_manager.get_net_position(ticker)
                     self.strategy.update_position(ticker, pos)
+                    self._track_and_flatten(ticker, pos)
 
                 # 6. Compute and place quotes
                 for ticker in self._active_markets:
@@ -280,6 +285,56 @@ class BotEngine:
 
             except Exception as e:
                 logger.error("Error updating data for %s: %s", ticker, e)
+
+    def _track_and_flatten(self, ticker: str, position: int):
+        """Track how long positions are held and force-close if losing or stale."""
+        sc = self.config.strategy
+
+        if position == 0:
+            self._position_entry_prices.pop(ticker, None)
+            self._position_hold_cycles.pop(ticker, None)
+            return
+
+        fair_value = self.market_data.get_smoothed_fair_value(ticker)
+        if fair_value is None:
+            return
+
+        # Record entry price when position first appears
+        if ticker not in self._position_entry_prices:
+            self._position_entry_prices[ticker] = fair_value
+            self._position_hold_cycles[ticker] = 0
+
+        self._position_hold_cycles[ticker] = self._position_hold_cycles.get(ticker, 0) + 1
+        entry_fv = self._position_entry_prices[ticker]
+        hold_cycles = self._position_hold_cycles[ticker]
+
+        # Unrealized P&L per contract (negative = losing)
+        if position > 0:
+            unrealized_per_contract = fair_value - entry_fv
+        else:
+            unrealized_per_contract = entry_fv - fair_value
+
+        should_flatten = False
+        reason = ""
+
+        # Flatten if losing more than threshold per contract
+        if unrealized_per_contract < -sc.max_position_loss_cents:
+            should_flatten = True
+            reason = f"loss {unrealized_per_contract:.1f}c/contract > {sc.max_position_loss_cents}c limit"
+
+        # Flatten if held too long (position is stuck, not getting closed by spread)
+        if hold_cycles > sc.max_hold_cycles:
+            should_flatten = True
+            reason = f"held {hold_cycles} cycles > {sc.max_hold_cycles} limit"
+
+        if should_flatten:
+            logger.warning("Flattening %s: %s (pos=%d, entry=%.1f, now=%.1f)",
+                           ticker, reason, position, entry_fv, fair_value)
+            self.order_manager.cancel_all(ticker)
+            time.sleep(0.05)
+            self.order_manager.flatten_position(ticker, position, fair_value)
+            self._position_entry_prices.pop(ticker, None)
+            self._position_hold_cycles.pop(ticker, None)
 
     def _manage_market(self, ticker: str):
         """Compute and place/update quotes for a single market."""

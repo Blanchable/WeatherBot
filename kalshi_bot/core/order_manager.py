@@ -101,6 +101,34 @@ class OrderManager:
             return order
         return None
 
+    def flatten_position(self, ticker: str, position: int, fair_value: float) -> bool:
+        """Aggressively close a position by placing a marketable limit order.
+
+        If long (position > 0): sell YES at fair_value - 1 (slightly below FV to ensure fill)
+        If short (position < 0): buy YES at fair_value + 1 (slightly above FV to ensure fill)
+        """
+        if position == 0:
+            return True
+
+        size = min(abs(position), 15)
+
+        if position > 0:
+            # Sell YES at 1-2c below fair value to ensure fill
+            sell_price = max(1, int(fair_value) - 1)
+            logger.warning(
+                "FLATTENING %s: selling %d YES@%dc (fv=%.1f, pos=%d)",
+                ticker, size, sell_price, fair_value, position,
+            )
+            return self.place_ask(ticker, sell_price, size) is not None
+        else:
+            # Buy YES at 1-2c above fair value to ensure fill
+            buy_price = min(99, int(fair_value) + 1)
+            logger.warning(
+                "FLATTENING %s: buying %d YES@%dc (fv=%.1f, pos=%d)",
+                ticker, size, buy_price, fair_value, position,
+            )
+            return self.place_bid(ticker, buy_price, size) is not None
+
     def cancel_order(self, order_id: str) -> bool:
         result = self.api.cancel_order(order_id)
         if result is not None:

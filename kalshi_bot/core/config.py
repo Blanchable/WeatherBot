@@ -63,6 +63,12 @@ class StrategyConfig:
     # Time decay: widen spread as expiry approaches (hours)
     time_decay_start_hours: float = 2.0
 
+    # Position flattening: aggressively close positions that have gone against us
+    # Max cents of unrealized loss before force-closing at market
+    max_position_loss_cents: int = 8
+    # Max cycles to hold a position before aggressively trying to close
+    max_hold_cycles: int = 40
+
 
 @dataclass
 class RiskConfig:
