@@ -12,6 +12,7 @@ from kalshi_bot.core.market_data import MarketDataManager
 from kalshi_bot.core.order_manager import OrderManager
 from kalshi_bot.core.risk_manager import RiskManager
 from kalshi_bot.strategy.market_maker import MarketMakingStrategy, Quote
+from kalshi_bot.strategy.btc_sniper import BtcSniperStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ class BotEngine:
         self.order_manager = OrderManager(self.api)
         self.risk_manager = RiskManager(config.risk, self.api)
         self.strategy = MarketMakingStrategy(config.strategy, self.market_data)
+        self.btc_sniper = BtcSniperStrategy(self.api, config)
 
         self._running = False
         self._paused = False
@@ -160,9 +162,18 @@ class BotEngine:
                     self.strategy.update_position(ticker, pos)
                     self._track_and_flatten(ticker, pos)
 
-                # 6. Compute and place quotes
+                # 6. Compute and place quotes (market making)
                 for ticker in self._active_markets:
                     self._manage_market(ticker)
+
+                # 6b. BTC sniper scan (every 4th cycle to save API calls)
+                if self._cycle_count % 4 == 2:
+                    try:
+                        snipe_trades = self.btc_sniper.run_scan()
+                        if snipe_trades > 0:
+                            logger.info("BTC sniper placed %d trades", snipe_trades)
+                    except Exception as e:
+                        logger.error("BTC sniper error: %s", e)
 
                 # 7. Notify GUI
                 self._fire_data_update()
